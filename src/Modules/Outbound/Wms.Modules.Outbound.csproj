@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Wms.Modules.Outbound</RootNamespace>
+  </PropertyGroup>
+</Project>

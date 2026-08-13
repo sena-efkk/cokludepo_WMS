@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>Wms.Api</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Modules\MasterData\Wms.Modules.MasterData.csproj" />
+    <ProjectReference Include="..\Modules\Facility\Wms.Modules.Facility.csproj" />
+    <ProjectReference Include="..\Modules\Inventory\Wms.Modules.Inventory.csproj" />
+  </ItemGroup>
+</Project>
