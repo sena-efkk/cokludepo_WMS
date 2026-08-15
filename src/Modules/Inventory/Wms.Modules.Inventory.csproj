@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <ProjectReference Include="..\..\Integration\Wms.Integration.csproj" />
     <ProjectReference Include="..\MasterData\Wms.Modules.MasterData.csproj" />
     <ProjectReference Include="..\Facility\Wms.Modules.Facility.csproj" />
   </ItemGroup>

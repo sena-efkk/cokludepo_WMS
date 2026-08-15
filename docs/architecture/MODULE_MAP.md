@@ -28,10 +28,10 @@ Tüm modüller aynı türden değildir — üç sınıf vardır:
 | **MasterData** | Şirket geneli ortak ürün verisi | Product, SKU, Barcode, UOM, Category, Brand, boyut/ağırlık, saklama gereksinimleri | Company |
 | **Facility** | Fiziksel dünya: "nereler var?" | Warehouse, Zone, Location (hiyerarşik), LocationCapability, Dock | Company (warehouse) / Warehouse (location) |
 | **Inventory** | "Hangi SKU, nerede, ne durumda?" — stok invariant'larının tek sahibi | InventoryBalance, InventoryTransaction (ledger), stok durumu, Allocated sayacı | Warehouse |
-| **Inbound** | Depoya giriş operasyonları | InboundShipment, Receipt, Receiving, QC, PutawayTask | Warehouse |
-| **Outbound** | Depodan çıkış operasyonları | FulfillmentOrder (yürütme), Allocation, PickTask, Pack, Staging, Shipment | Warehouse |
-| **Transfers** | A → InTransit → B network transfer süreci | TransferOrder, TransferLine, InTransit pozisyonu, transfer zaman çizelgesi | Network |
-| **Fulfillment** | Sipariş hangi depo(lar)dan karşılanır? | Warehouse sourcing, FulfillmentDecision, network stok okuma (read-only) | Network |
+| **Inbound** | Depoya giriş operasyonları (workflow sahibi; stok mutation Inventory'nin) | InboundReceipt, ReceiptLine, ReceiptLineReceiveRecord, Receiving, PutawayTask | Warehouse |
+| **Outbound** | Depodan çıkış operasyonları (fulfillment workflow sahibi; stok mutation Inventory'nin) | FulfillmentOrder, PickTask, PickNotFound→Accuracy, Pack, Shipment | Warehouse |
+| **Transfers** | A → InTransit → B network transfer süreci (orchestration; stok mutation Outbound/Inbound contract'ları üzerinden) | TransferOrder, TransferLine, InTransit (derived), TransferDiscrepancy | Network |
+| **Fulfillment** | Sipariş hangi depo(lar)dan karşılanır? (Phase 14: deterministic sourcing — evaluate/commit, açıklanabilir skorlama) + Network inventory view (read-only canlı agregasyon — Phase 11) | SourcingRequest/Decision, SourcingOptions, NetworkInventoryView | Network |
 | **Administration** | Kimlik + warehouse-scope yetki + audit log | User, Role, UserWarehouseAccess, AuditLog (ADR-0007) | Company |
 | **Integration** *(teknik)* | Dış adaptörler + outbox relay/inbox transport | OMS/supplier/carrier adapter, relay, (ileride) broker | — |
 | **Optimization** *(ileride)* | Strateji tabanlı optimizasyonlar — çekirdek domain'e gömülmez | Sourcing stratejileri, putaway stratejisi, slotting, picking route, wave planning | — |

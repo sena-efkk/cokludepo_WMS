@@ -556,3 +556,22 @@ Movement + ledger + ScanMovementEvidence → TEK transaction
 - **Bilinçli sınır**: putaway SUGGESTION (optimal yer önerisi) bu fazın kapsamı dışında —
   8.5 yalnızca scan-enforced execution temelini kurar; risk/velocity verisi (8.2) gelecekte
   öneri motoruna beslenecek.
+
+## Implementation Status (Phase 9 eklentileri — Inbound entegrasyonu)
+
+- **`LedgerEntryType.Received`**: inbound receipt'lerin ledger izi — balance +q ile AYNI
+  transaction'da yazılır (migration AddLedgerReferenceColumns).
+- **Ledger reference kolonları**: `reference_type` (ör. `INBOUND_RECEIPT`) + `reference_id`
+  (receipt id) — "hangi belgeden geldi" izlenebilirliği; index (reference_type, reference_id).
+- **`ReceiveInventory` use case + `IInventoryContract.ReceiveInventoryAsync`**: Inbound'ın TEK
+  stok giriş yolu — operation row idempotency + balance upsert + RECEIVED ledger, tek transaction.
+  Inbound asla balance/ledger tablolarına doğrudan yazmaz (arch + DB testiyle korunur).
+- **`IInventoryContract.ExecuteScannedRelocationAsync`**: Phase 8.5 motorunun kontrat yüzeyi —
+  Inbound putaway orchestration'ı bunu kullanır; ikinci hareket motoru yok.
+- **Phase 10 eklentisi — `ReserveOrder`**: multi-line order allocation'ı TEK Inventory
+  transaction'ında yapar (all-or-nothing; herhangi bir line yetersizse tümü rollback, dangling
+  reservation imkânsız). Per-line reservation RequestId'leri order RequestId'den deterministik
+  türetilir → retry-safe idempotency. Kilit sırası sku_id artan (deadlock güvenli).
+  `ReserveOrderAsync` + `GetReservationAsync` contract yüzeyine eklendi; Outbound reservation
+  detayını (location-level line'lar) buradan alır.
+- Detay: [INBOUND_MODEL.md](INBOUND_MODEL.md) · [OUTBOUND_MODEL.md](OUTBOUND_MODEL.md).

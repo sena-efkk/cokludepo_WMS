@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Wms.IntegrationTests</RootNamespace>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
+    <PackageReference Include="RabbitMQ.Client" Version="7.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Integration\Wms.Integration.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Outbound\Wms.Modules.Outbound.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inbound\Wms.Modules.Inbound.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Transfers\Wms.Modules.Transfers.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Fulfillment\Wms.Modules.Fulfillment.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inventory\Wms.Modules.Inventory.csproj" />
+    <ProjectReference Include="..\..\src\Modules\MasterData\Wms.Modules.MasterData.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Facility\Wms.Modules.Facility.csproj" />
+  </ItemGroup>
+</Project>

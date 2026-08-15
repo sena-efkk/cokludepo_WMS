@@ -9,7 +9,7 @@ public sealed class FacilityQueryContract(FacilityDbContext db) : IFacilityQuery
     {
         return await db.Warehouses
             .Where(w => w.Id == warehouseId)
-            .Select(w => new WarehouseInfo(w.Id, w.Code, w.IsActive))
+            .Select(w => new WarehouseInfo(w.Id, w.Code, w.IsActive, w.Latitude, w.Longitude))
             .FirstOrDefaultAsync(cancellationToken);
     }
 
@@ -41,7 +41,7 @@ public sealed class FacilityQueryContract(FacilityDbContext db) : IFacilityQuery
     {
         var result = await db.Warehouses
             .Where(w => w.IsActive)
-            .Select(w => new WarehouseInfo(w.Id, w.Code, w.IsActive))
+            .Select(w => new WarehouseInfo(w.Id, w.Code, w.IsActive, w.Latitude, w.Longitude))
             .ToListAsync(cancellationToken);
         return result.AsReadOnly();
     }

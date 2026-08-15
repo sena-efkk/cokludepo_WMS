@@ -1,0 +1,112 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "graphTooltip": 0,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP Request Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(http_server_request_duration_seconds_count[1m]))", "legendFormat": "req/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP Error Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[1m]))", "legendFormat": "5xx/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Reservations: success vs failure",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "sum(rate(inventory_reservations_total[1m]))", "legendFormat": "success" },
+        { "expr": "sum(rate(inventory_reservation_failures_total[1m]))", "legendFormat": "failure" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "PickNotFound signals",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "sum(rate(pick_not_found_total[5m]))", "legendFormat": "signals/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Outbox pending",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        { "expr": "outbox_pending", "legendFormat": "pending" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Oldest pending outbox event (seconds)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        { "expr": "outbox_oldest_pending_seconds", "legendFormat": "seconds" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DLQ messages (cumulative nacks)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        { "expr": "sum(increase(dlq_messages_total[5m]))", "legendFormat": "to-dlq" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Orders shipped",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        { "expr": "sum(rate(orders_shipped_total[5m]))", "legendFormat": "shipped/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Sourcing latency (seconds)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "targets": [
+        { "expr": "sum(rate(sourcing_duration_seconds_sum[5m])) / sum(rate(sourcing_duration_seconds_count[5m]))", "legendFormat": "avg" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Optimization fallback",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "targets": [
+        { "expr": "sum(rate(optimization_fallback_total[5m]))", "legendFormat": "fallback" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Sourcing stale",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "targets": [
+        { "expr": "sum(rate(sourcing_stale_total[5m]))", "legendFormat": "stale" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cycle counts / reconciliations",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "targets": [
+        { "expr": "sum(rate(cycle_counts_created_total[5m]))", "legendFormat": "cycle-counts" },
+        { "expr": "sum(rate(reconciliations_total[5m]))", "legendFormat": "reconciliations" }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "title": "WMS Operations",
+  "uid": "wms-operations",
+  "version": 1
+}

@@ -259,6 +259,12 @@ public static class InventoryEndpoints
                 },
                 ct));
 
+        group.MapGet("/accuracy/summary", async (Guid? warehouseId, Wms.Modules.Inventory.Application.Accuracy.GetAccuracySummary useCase, CancellationToken ct) =>
+        {
+            var summary = await useCase.Handle(warehouseId, ct);
+            return Results.Ok(summary);
+        });
+
         var cycleCounts = group.MapGroup("/accuracy/cycle-counts");
 
         cycleCounts.MapPost("/evaluate", async (Guid? warehouseId, Wms.Modules.Inventory.Application.Accuracy.CycleCounting.EvaluateCycleCountCandidates useCase, CancellationToken ct) =>

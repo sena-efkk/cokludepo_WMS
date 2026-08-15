@@ -38,10 +38,13 @@ public static class InventoryModuleExtensions
         services.AddScoped<IInventoryStore, InventoryStore>();
         services.AddScoped<RecordOpeningBalance>();
         services.AddScoped<Reserve>();
+        services.AddScoped<ReserveOrder>();
+        services.AddScoped<GetReservationById>();
         services.AddScoped<ReleaseReservation>();
         services.AddScoped<ConsumeReservation>();
         services.AddScoped<RelocateStock>();
         services.AddScoped<ChangeInventoryStatus>();
+        services.AddScoped<ReceiveInventory>();
         services.AddScoped<ExecuteScannedRelocation>();
         services.AddScoped<GetMovement>();
         services.AddScoped<ListMovements>();
@@ -52,6 +55,7 @@ public static class InventoryModuleExtensions
         services.AddScoped<GetLocationRiskAssessment>();
         services.AddScoped<ListRiskAssessments>();
         services.AddScoped<GetAbcDeadSummary>();
+        services.AddScoped<Wms.Modules.Inventory.Application.Accuracy.GetAccuracySummary>();
         services.AddScoped<EvaluateCycleCountCandidates>();
         services.AddScoped<StartCycleCount>();
         services.AddScoped<CompleteCycleCount>();

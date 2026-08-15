@@ -10,6 +10,14 @@ public sealed record NotFoundOccurrence(Guid LocationId, DateTime OccurredAt);
 
 public sealed record SkuEventCount(Guid SkuId, int Count180d);
 
+public sealed record SkuLocationPhysicalActivity(Guid SkuId, Guid LocationId, int Count30d, int Count90d, int Count180d, DateTime? LastAt);
+
+public sealed record SkuLocationNotFoundStats(Guid SkuId, Guid LocationId, int Count7d, int Count30d, DateTime? LastAt);
+
+public sealed record SkuNotFoundOccurrence(Guid SkuId, Guid LocationId, DateTime OccurredAt);
+
+public sealed record SkuLocationLatestVerifiedCount(Guid SkuId, Guid LocationId, DateTime CountedAt);
+
 public sealed record RiskReason(string Code, int Points, string Description);
 
 public sealed record LocationRiskAssessment(

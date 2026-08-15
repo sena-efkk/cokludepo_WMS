@@ -8,10 +8,19 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Npgsql" Version="10.0.3" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.15.0-beta.1" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Integration\Wms.Integration.csproj" />
     <ProjectReference Include="..\Modules\MasterData\Wms.Modules.MasterData.csproj" />
     <ProjectReference Include="..\Modules\Facility\Wms.Modules.Facility.csproj" />
     <ProjectReference Include="..\Modules\Inventory\Wms.Modules.Inventory.csproj" />
+    <ProjectReference Include="..\Modules\Inbound\Wms.Modules.Inbound.csproj" />
+    <ProjectReference Include="..\Modules\Outbound\Wms.Modules.Outbound.csproj" />
+    <ProjectReference Include="..\Modules\Transfers\Wms.Modules.Transfers.csproj" />
+    <ProjectReference Include="..\Modules\Fulfillment\Wms.Modules.Fulfillment.csproj" />
   </ItemGroup>
 </Project>

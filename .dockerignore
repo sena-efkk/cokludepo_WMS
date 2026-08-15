@@ -1,0 +1,20 @@
+# .NET
+**/bin/
+**/obj/
+*.user
+
+# Node
+**/node_modules/
+**/dist/
+**/test-results/
+**/playwright-report/
+
+# Git & docs (not needed in image)
+.git/
+docs/
+
+# Local secrets & data
+.env
+deploy/.env
+deploy/grafana/
+deploy/prometheus/

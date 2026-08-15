@@ -16,3 +16,9 @@ obj/
 TestResults/
 *.coverage
 coverage.*
+
+# Node / web UI
+node_modules/
+dist/
+test-results/
+playwright-report/

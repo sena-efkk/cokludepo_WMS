@@ -1,4 +1,5 @@
 using Wms.Modules.Inventory.Domain.Accuracy.Reconciliation;
+using Wms.Integration.Telemetry;
 
 namespace Wms.Modules.Inventory.Application.Accuracy.Reconciliation;
 

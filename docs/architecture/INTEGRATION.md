@@ -52,7 +52,7 @@ Modül içindeki yan etkiler ve **okuma tarafı** bildirimleri için:
 Basit in-process event dispatcher (built-in veya küçük bir abstraction). Event'ler
 outbox-ready biçimde tasarlanır: `EventId, AggregateId, CorrelationId, OccurredAt, Payload`.
 
-## Yarın: RabbitMQ Ne Zaman, Nerede (Phase 13)
+## Yarın: RabbitMQ Ne Zaman, Nerede (Phase 13 ✅)
 
 Broker yalnızca **gerçek process sınırı** varsa devreye girer:
 
@@ -65,6 +65,81 @@ Broker yalnızca **gerçek process sınırı** varsa devreye girer:
 
 Monolit içi senkron modül çağrıları **broker'a taşınmaz** — gerek yoktur, yalnızca gecikme
 ve karmaşıklık ekler.
+
+## Implementation Status (Phase 13 — Transactional Outbox / Idempotent Consumers)
+
+### Akış
+
+```text
+OUTBOUND TRANSACTION
+Shipment → SHIPPED  +  Outbox(ShipmentShipped)   [AYNI PG transaction]
+        │
+        ▼ COMMIT
+Outbox Dispatcher (BackgroundService, 3 sn poll, batch 50)
+        │
+        ▼
+RabbitMQ (wms-integration exchange, routing key = event-type.v1)
+        │
+        ▼
+Consumer Queue (transfers-inbox; DLX → transfers-inbox-dlq)
+        │
+        ▼
+Inbox Idempotency (UNIQUE(consumer, event_id))
+        │
+        ▼
+Transfer Handler (idempotent business op)
+```
+
+Prensipler:
+
+> Database commit and event intent must be atomic.
+> Delivery may happen more than once; business effect must not.
+> RabbitMQ is transport, not source of truth.
+> Outbox prevents event loss; Inbox prevents duplicate processing.
+
+### Üretilen Event'ler (explicit DTO — domain dump YOK)
+
+| Event | Routing key | Producer | Consumer |
+|---|---|---|---|
+| `ShipmentShippedV1` | `outbound.shipment-shipped.v1` | Outbound (ShipOrder tx) | Transfers |
+| `ReceiptCompletedV1` | `inbound.receipt-completed.v1` | Inbound (receipt completion tx) | Transfers |
+
+Envelope: `EventId, EventType, EventVersion, OccurredAt, CorrelationId, Payload(JSON)`.
+EventId stable (shipment id / receipt id) — retry yeni EventId üretmez.
+
+### Yapı Taşları
+
+- `Wms.Integration` — TEKNİK assembly (business bounded context DEĞİL): envelope + event DTO'ları,
+  `OutboxMessage` (AttemptCount/LastError/NextAttemptAt), `InboxMessage`, `IRabbitMqPublisher`
+  (topology + DLX/DLQ declare), `OutboxDispatcher(+Service)`, `IntegrationConsumerService`
+  (manual ack; 1 redelivery sonrası DLQ), `IIntegrationConsumer`.
+- Outbox tabloları MODÜL-OWN (ADR-0009): `outbound.outbox_message`, `inbound.outbox_message` —
+  business state ile aynı local tx. Inbox: `transfers.inbox_message` (UNIQUE(consumer, event_id)).
+- Retry: exponential-ish backoff (5s → 30s → 5dk), event ASLA silinmez; cleanup policy
+  (published > N gün) ileride — şimdilik retention dökümante.
+- RabbitMQ: `wms-integration` direct exchange + `wms-integration-dlx` + DLQ'lar; topology
+  declare idempotent; config `RabbitMQ:Host/Port/Username/Password` (appsettings default +
+  env override; secret repo'da YOK).
+- `/health` → rabbitmq connectivity check eklendi. Public publish endpoint YOK.
+
+### Transfer Entegrasyonu
+
+- `ShipmentShipped` → transfer (OutboundOrderId korelasyonu) → `ShipTransfer` idempotent
+  tetiklenir (event yalnız tetikleyici; business op kendi deterministik RequestId'leriyle retry-safe).
+- `ReceiptCompleted` → transfer (InboundReceiptId korelasyonu) → tüm line'lar kapalıysa
+  COMPLETED (domain guard; duplicate event → inbox skip).
+- Event path CANLI doğrulandı: transfer ship API'si çağrılmadan, outbound ship →
+  outbox → RabbitMQ → consumer → transfer `IN_TRANSIT` (+ destination receipt).
+
+### Testler (14 yeni — gerçek PostgreSQL + gerçek RabbitMQ)
+
+Atomicity (business+outbox aynı tx; rollback → outbox yok), Shipment/Receipt outbox payload
+korelasyonu, dispatcher publish + published tekrar dispatch edilmez, broker-down (pending +
+attempt/error metadata, business kaybolmaz), broker recovery (pending → gerçek kuyruk),
+duplicate delivery → tek business effect (inbox + idempotent handler, ShipmentShipped ve
+ReceiptCompleted için), DLQ poison yakalar, unknown event graceful ignore, contract DTO
+primitive-only, event direction (producer→consumer assembly kanıtı), RabbitMQ container
+healthcheck (management API), arch süiti. Tam süit 332/332.
 
 ## Outbox Pattern (zamanı gelince — ADR-0001'de taahhüt)
 

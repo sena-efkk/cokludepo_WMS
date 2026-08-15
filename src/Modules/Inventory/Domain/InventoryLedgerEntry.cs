@@ -15,7 +15,9 @@ public sealed class InventoryLedgerEntry
         LedgerEntryType entryType,
         int quantityDelta,
         int allocatedDelta,
-        Guid? movementId)
+        Guid? movementId,
+        string? referenceType,
+        Guid? referenceId)
     {
         Id = Guid.NewGuid();
         RequestId = requestId;
@@ -27,6 +29,8 @@ public sealed class InventoryLedgerEntry
         QuantityDelta = quantityDelta;
         AllocatedDelta = allocatedDelta;
         MovementId = movementId;
+        ReferenceType = referenceType;
+        ReferenceId = referenceId;
         OccurredAt = DateTime.UtcNow;
     }
 
@@ -50,6 +54,10 @@ public sealed class InventoryLedgerEntry
 
     public Guid? MovementId { get; private set; }
 
+    public string? ReferenceType { get; private set; }
+
+    public Guid? ReferenceId { get; private set; }
+
     public DateTime OccurredAt { get; private set; }
 
     public static InventoryLedgerEntry Create(
@@ -61,13 +69,26 @@ public sealed class InventoryLedgerEntry
         LedgerEntryType entryType,
         int quantityDelta,
         int allocatedDelta,
-        Guid? movementId = null)
+        Guid? movementId = null,
+        string? referenceType = null,
+        Guid? referenceId = null)
     {
         if (requestId == Guid.Empty)
         {
             throw new ArgumentException("Ledger entry bir RequestId taşımalıdır.", nameof(requestId));
         }
 
-        return new InventoryLedgerEntry(requestId, skuId, warehouseId, locationId, status, entryType, quantityDelta, allocatedDelta, movementId);
+        return new InventoryLedgerEntry(
+            requestId,
+            skuId,
+            warehouseId,
+            locationId,
+            status,
+            entryType,
+            quantityDelta,
+            allocatedDelta,
+            movementId,
+            string.IsNullOrWhiteSpace(referenceType) ? null : referenceType.Trim(),
+            referenceId);
     }
 }

@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Wms.Modules.Inventory.Application;
 using Wms.Modules.Inventory.Application.Accuracy.Reconciliation;
@@ -347,6 +347,448 @@ public sealed class InventoryStore(InventoryDbContext db) : IInventoryStore
             .FirstOrDefaultAsync(e => e.MovementId == movementId, cancellationToken);
     }
 
+    private const string BalanceRollupColumns = """
+        warehouse_id AS "warehouse_id",
+        SUM(quantity)::int AS "physical_stock",
+        COALESCE(SUM(allocated), 0)::int AS "allocated",
+        COALESCE(SUM(quantity) FILTER (WHERE status = 'AVAILABLE'), 0)::int AS "available_quantity",
+        COALESCE(SUM(quantity) FILTER (WHERE status = 'HOLD'), 0)::int AS "hold",
+        COALESCE(SUM(quantity) FILTER (WHERE status = 'QUARANTINE'), 0)::int AS "quarantine",
+        COALESCE(SUM(quantity) FILTER (WHERE status = 'DAMAGED'), 0)::int AS "damaged"
+        """;
+
+    public async Task<SkuWarehouseAvailabilityView?> GetSkuWarehouseAvailabilityRowAsync(
+        Guid warehouseId,
+        Guid skuId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.Database.SqlQueryRaw<SkuWarehouseAvailabilityRow>(
+                "SELECT {1}::uuid AS \"sku_id\", " + BalanceRollupColumns + " " + """
+                FROM inventory.inventory_balance
+                WHERE warehouse_id = {0} AND sku_id = {1}
+                GROUP BY warehouse_id
+                """,
+                warehouseId,
+                skuId)
+            .ToListAsync(cancellationToken);
+
+        var row = rows.FirstOrDefault();
+        return row is null
+            ? null
+            : new SkuWarehouseAvailabilityView(
+                skuId,
+                row.WarehouseId,
+                row.PhysicalStock,
+                row.Allocated,
+                row.AvailableQuantity,
+                row.Hold,
+                row.Quarantine,
+                row.Damaged);
+    }
+
+    public async Task<IReadOnlyList<SkuWarehouseAvailabilityView>> ListSkuWarehouseAvailabilityRowsAsync(
+        Guid skuId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.Database.SqlQueryRaw<SkuWarehouseAvailabilityRow>(
+                "SELECT {0}::uuid AS \"sku_id\", " + BalanceRollupColumns + " " + """
+                FROM inventory.inventory_balance
+                WHERE sku_id = {0}
+                GROUP BY warehouse_id
+                ORDER BY warehouse_id
+                """,
+                skuId)
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(r => new SkuWarehouseAvailabilityView(
+                skuId,
+                r.WarehouseId,
+                r.PhysicalStock,
+                r.Allocated,
+                r.AvailableQuantity,
+                r.Hold,
+                r.Quarantine,
+                r.Damaged))
+            .ToList()
+            .AsReadOnly();
+    }
+
+    public async Task<IReadOnlyList<SkuLocationBalanceView>> ListSkuLocationBalanceRowsAsync(
+        Guid warehouseId,
+        Guid skuId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.Database.SqlQueryRaw<SkuLocationBalanceRow>(
+                """
+                SELECT location_id AS "location_id",
+                       status AS "status",
+                       quantity AS "quantity",
+                       allocated AS "allocated"
+                FROM inventory.inventory_balance
+                WHERE warehouse_id = {0} AND sku_id = {1}
+                ORDER BY location_id, status
+                """,
+                warehouseId,
+                skuId)
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(r => new SkuLocationBalanceView(
+                r.LocationId,
+                r.Status,
+                r.Quantity,
+                r.Allocated,
+                r.Status == "AVAILABLE" ? r.Quantity - r.Allocated : 0))
+            .ToList()
+            .AsReadOnly();
+    }
+
+    public async Task<IReadOnlyList<WarehouseStockRollupView>> ListWarehouseStockRollupRowsAsync(
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.Database.SqlQueryRaw<WarehouseStockRollupRow>(
+                "SELECT " + BalanceRollupColumns + " " + """
+                ,
+                       COUNT(DISTINCT sku_id)::int AS "sku_count"
+                FROM inventory.inventory_balance
+                GROUP BY warehouse_id
+                ORDER BY warehouse_id
+                """)
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(r => new WarehouseStockRollupView(
+                r.WarehouseId,
+                r.SkuCount,
+                r.PhysicalStock,
+                r.Allocated,
+                r.AvailableQuantity,
+                r.Hold,
+                r.Quarantine,
+                r.Damaged))
+            .ToList()
+            .AsReadOnly();
+    }
+
+    public async Task<(IReadOnlyList<WarehouseSkuStockRowView> Rows, int Total)> ListWarehouseSkuRowsAsync(
+        Guid warehouseId,
+        int skip,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var total = await db.InventoryBalances
+            .Where(b => b.WarehouseId == warehouseId)
+            .Select(b => b.SkuId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+
+        var rows = await db.Database.SqlQueryRaw<WarehouseSkuStockRow>(
+                """
+                SELECT sku_id AS "sku_id",
+                       SUM(quantity)::int AS "physical_stock",
+                       COALESCE(SUM(allocated), 0)::int AS "allocated",
+                       COALESCE(SUM(quantity) FILTER (WHERE status = 'AVAILABLE'), 0)::int AS "available_quantity",
+                       COALESCE(SUM(quantity) FILTER (WHERE status = 'HOLD'), 0)::int AS "hold",
+                       COALESCE(SUM(quantity) FILTER (WHERE status = 'QUARANTINE'), 0)::int AS "quarantine",
+                       COALESCE(SUM(quantity) FILTER (WHERE status = 'DAMAGED'), 0)::int AS "damaged"
+                FROM inventory.inventory_balance
+                WHERE warehouse_id = {0}
+                GROUP BY sku_id
+                ORDER BY sku_id
+                LIMIT {1} OFFSET {2}
+                """,
+                warehouseId,
+                take,
+                skip)
+            .ToListAsync(cancellationToken);
+
+        var result = rows
+            .Select(r => new WarehouseSkuStockRowView(
+                r.SkuId,
+                r.PhysicalStock,
+                r.Allocated,
+                r.AvailableQuantity,
+                r.Hold,
+                r.Quarantine,
+                r.Damaged))
+            .ToList()
+            .AsReadOnly();
+
+        return (result, total);
+    }
+
+    public async Task<(IReadOnlyList<SkuWarehouseAvailabilityView> Rows, int Total)> ListSkuWarehousePageRowsAsync(
+        Guid? warehouseId,
+        IReadOnlyList<Guid>? skuIds,
+        bool? hasStock,
+        bool? hasAtp,
+        string? sort,
+        int skip,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var parameters = new List<object>();
+        var skuPh = 0;
+        if (skuIds is not null)
+        {
+            parameters.Add(skuIds.ToArray());
+            skuPh = 0;
+        }
+
+        var whPh = parameters.Count;
+        if (warehouseId.HasValue)
+        {
+            parameters.Add(warehouseId.Value);
+        }
+
+        var skuFilter = skuIds is null ? string.Empty : $"AND sku_id = ANY({{{skuPh}}})";
+        var whereSql = warehouseId.HasValue ? $"AND warehouse_id = {{{whPh}}}" : string.Empty;
+
+        var sortSql = sort switch
+        {
+            "atp" => "ORDER BY (COALESCE(SUM(quantity) FILTER (WHERE status = 'AVAILABLE'), 0) - COALESCE(SUM(allocated), 0)) DESC, sku_id, warehouse_id",
+            "physical" => "ORDER BY SUM(quantity) DESC, sku_id, warehouse_id",
+            _ => "ORDER BY sku_id, warehouse_id",
+        };
+
+        var having = new List<string>();
+        if (hasStock == true)
+        {
+            having.Add("SUM(quantity) > 0");
+        }
+
+        if (hasAtp == true)
+        {
+            having.Add("(COALESCE(SUM(quantity) FILTER (WHERE status = 'AVAILABLE'), 0) - COALESCE(SUM(allocated), 0)) > 0");
+        }
+
+        var havingSql = having.Count == 0 ? string.Empty : "HAVING " + string.Join(" AND ", having);
+
+        var limitPh = parameters.Count;
+        var offsetPh = parameters.Count + 1;
+
+        var rows = await db.Database.SqlQueryRaw<SkuWarehouseAvailabilityRow>(
+                ("SELECT sku_id AS \"sku_id\", " + BalanceRollupColumns + " " + """
+                FROM inventory.inventory_balance
+                WHERE 1 = 1 @skuFilter@ @whereSql@
+                GROUP BY sku_id, warehouse_id
+                @havingSql@
+                @sortSql@
+                """ + "\n" + "LIMIT {" + limitPh + "} OFFSET {" + offsetPh + "}")
+                .Replace("@skuFilter@", skuFilter)
+                .Replace("@whereSql@", whereSql)
+                .Replace("@havingSql@", havingSql)
+                .Replace("@sortSql@", sortSql),
+                [.. parameters, take, skip])
+            .ToListAsync(cancellationToken);
+
+        var result = rows
+            .Select(r => new SkuWarehouseAvailabilityView(
+                r.SkuId,
+                r.WarehouseId,
+                r.PhysicalStock,
+                r.Allocated,
+                r.AvailableQuantity,
+                r.Hold,
+                r.Quarantine,
+                r.Damaged))
+            .ToList()
+            .AsReadOnly();
+
+        var total = rows.Count < take
+            ? skip + rows.Count
+            : await CountSkuWarehousePageAsync(warehouseId, skuIds, hasStock, hasAtp, cancellationToken);
+
+        return (result, total);
+    }
+
+    private async Task<int> CountSkuWarehousePageAsync(
+        Guid? warehouseId,
+        IReadOnlyList<Guid>? skuIds,
+        bool? hasStock,
+        bool? hasAtp,
+        CancellationToken cancellationToken)
+    {
+        var parameters = new List<object>();
+        if (skuIds is not null)
+        {
+            parameters.Add(skuIds.ToArray());
+        }
+
+        var whPh = parameters.Count;
+        if (warehouseId.HasValue)
+        {
+            parameters.Add(warehouseId.Value);
+        }
+
+        var skuFilter = skuIds is null ? string.Empty : "AND sku_id = ANY({0})";
+        var whereSql = warehouseId.HasValue ? $"AND warehouse_id = {{{whPh}}}" : string.Empty;
+
+        var having = new List<string>();
+        if (hasStock == true)
+        {
+            having.Add("SUM(quantity) > 0");
+        }
+
+        if (hasAtp == true)
+        {
+            having.Add("(COALESCE(SUM(quantity) FILTER (WHERE status = 'AVAILABLE'), 0) - COALESCE(SUM(allocated), 0)) > 0");
+        }
+
+        var havingSql = having.Count == 0 ? string.Empty : "HAVING " + string.Join(" AND ", having);
+
+        return await db.Database.SqlQueryRaw<int>(
+                """
+                SELECT COUNT(*)::int AS "Value"
+                FROM (
+                    SELECT sku_id, warehouse_id
+                    FROM inventory.inventory_balance
+                    WHERE 1 = 1 @skuFilter@ @whereSql@
+                    GROUP BY sku_id, warehouse_id
+                    @havingSql@
+                ) grouped
+                """.Replace("@skuFilter@", skuFilter).Replace("@whereSql@", whereSql).Replace("@havingSql@", havingSql),
+                parameters.ToArray())
+            .FirstAsync(cancellationToken);
+    }
+
+    private sealed class SkuWarehouseAvailabilityRow
+    {
+        public Guid SkuId { get; set; }
+
+        public Guid WarehouseId { get; set; }
+
+        public int PhysicalStock { get; set; }
+
+        public int Allocated { get; set; }
+
+        public int AvailableQuantity { get; set; }
+
+        public int Hold { get; set; }
+
+        public int Quarantine { get; set; }
+
+        public int Damaged { get; set; }
+    }
+
+    private sealed class SkuLocationBalanceRow
+    {
+        public Guid LocationId { get; set; }
+
+        public string Status { get; set; } = string.Empty;
+
+        public int Quantity { get; set; }
+
+        public int Allocated { get; set; }
+    }
+
+    private sealed class WarehouseStockRollupRow
+    {
+        public Guid WarehouseId { get; set; }
+
+        public int SkuCount { get; set; }
+
+        public int PhysicalStock { get; set; }
+
+        public int Allocated { get; set; }
+
+        public int AvailableQuantity { get; set; }
+
+        public int Hold { get; set; }
+
+        public int Quarantine { get; set; }
+
+        public int Damaged { get; set; }
+    }
+
+    private sealed class WarehouseSkuStockRow
+    {
+        public Guid SkuId { get; set; }
+
+        public int PhysicalStock { get; set; }
+
+        public int Allocated { get; set; }
+
+        public int AvailableQuantity { get; set; }
+
+        public int Hold { get; set; }
+
+        public int Quarantine { get; set; }
+
+        public int Damaged { get; set; }
+    }
+
+    public async Task<StoreSaveOutcome> ExecuteReceiveAsync(
+        Guid requestId,
+        Guid skuId,
+        Guid warehouseId,
+        Guid locationId,
+        InventoryStatus status,
+        int quantity,
+        string? referenceType,
+        Guid? referenceId,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            try
+            {
+                await db.Database.ExecuteSqlRawAsync(
+                    "INSERT INTO inventory.inventory_operation (request_id, operation_type, created_at) VALUES ({0}, 'InboundReceive', now())",
+                    requestId);
+            }
+            catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return StoreSaveOutcome.DuplicateRequest;
+            }
+
+            db.ChangeTracker.Clear();
+
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO inventory.inventory_balance (id, sku_id, warehouse_id, location_id, status, quantity, allocated, created_at, updated_at)
+                VALUES ({0}, {1}, {2}, {3}, {4}, {5}, 0, now(), now())
+                ON CONFLICT (sku_id, warehouse_id, location_id, status)
+                DO UPDATE SET quantity = inventory.inventory_balance.quantity + EXCLUDED.quantity,
+                              updated_at = now()
+                """,
+                Guid.NewGuid(),
+                skuId,
+                warehouseId,
+                locationId,
+                status.ToString().ToUpperInvariant(),
+                quantity);
+
+            var ledgerEntry = InventoryLedgerEntry.Create(
+                requestId,
+                skuId,
+                warehouseId,
+                locationId,
+                status,
+                LedgerEntryType.Received,
+                quantity,
+                0,
+                movementId: null,
+                referenceType,
+                referenceId);
+
+            await db.InventoryLedgerEntries.AddAsync(ledgerEntry, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+            return StoreSaveOutcome.Saved;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
     public async Task AddAccuracySignalAsync(Domain.Accuracy.InventoryAccuracySignal signal, CancellationToken cancellationToken)
     {
         await db.InventoryAccuracySignals.AddAsync(signal, cancellationToken);
@@ -453,6 +895,31 @@ public sealed class InventoryStore(InventoryDbContext db) : IInventoryStore
             .AsReadOnly();
     }
 
+    public async Task<IReadOnlyList<Application.Accuracy.SkuLocationPhysicalActivity>> GetWarehousePhysicalActivityAsync(
+        Guid warehouseId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.Database.SqlQueryRaw<SkuLocationPhysicalActivityRow>(
+            """
+            SELECT sku_id AS "sku_id",
+                   location_id AS "location_id",
+                   (COUNT(DISTINCT CASE WHEN occurred_at >= now() - interval '30 days' THEN COALESCE(movement_id, id) END))::int AS "count30d",
+                   (COUNT(DISTINCT CASE WHEN occurred_at >= now() - interval '90 days' THEN COALESCE(movement_id, id) END))::int AS "count90d",
+                   (COUNT(DISTINCT CASE WHEN occurred_at >= now() - interval '180 days' THEN COALESCE(movement_id, id) END))::int AS "count180d",
+                   MAX(occurred_at) AS "last_at"
+            FROM inventory.inventory_ledger
+            WHERE warehouse_id = {0} AND quantity_delta <> 0
+            GROUP BY sku_id, location_id
+            """,
+            warehouseId)
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(r => new Application.Accuracy.SkuLocationPhysicalActivity(r.SkuId, r.LocationId, r.Count30d, r.Count90d, r.Count180d, r.LastAt))
+            .ToList()
+            .AsReadOnly();
+    }
+
     public async Task<IReadOnlyList<Application.Accuracy.LocationNotFoundStats>> GetNotFoundStatsAsync(
         Guid warehouseId,
         Guid skuId,
@@ -474,6 +941,56 @@ public sealed class InventoryStore(InventoryDbContext db) : IInventoryStore
 
         return rows
             .Select(r => new Application.Accuracy.LocationNotFoundStats(r.LocationId, r.Count7d, r.Count30d, r.LastAt))
+            .ToList()
+            .AsReadOnly();
+    }
+
+    public async Task<IReadOnlyList<Application.Accuracy.SkuLocationNotFoundStats>> GetWarehouseNotFoundStatsAsync(
+        Guid warehouseId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.Database.SqlQueryRaw<SkuLocationNotFoundStatsRow>(
+            """
+            SELECT sku_id AS "sku_id",
+                   location_id AS "location_id",
+                   (COUNT(*) FILTER (WHERE occurred_at >= now() - interval '7 days'))::int AS "count7d",
+                   (COUNT(*) FILTER (WHERE occurred_at >= now() - interval '30 days'))::int AS "count30d",
+                   MAX(occurred_at) AS "last_at"
+            FROM inventory.inventory_accuracy_signal
+            WHERE warehouse_id = {0} AND signal_type = 'PICKNOTFOUND'
+            GROUP BY sku_id, location_id
+            """,
+            warehouseId)
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(r => new Application.Accuracy.SkuLocationNotFoundStats(r.SkuId, r.LocationId, r.Count7d, r.Count30d, r.LastAt))
+            .ToList()
+            .AsReadOnly();
+    }
+
+    public async Task<IReadOnlyList<Application.Accuracy.SkuNotFoundOccurrence>> GetWarehouseNotFoundOccurrencesAsync(
+        Guid warehouseId,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.Database.SqlQueryRaw<SkuNotFoundOccurrenceRow>(
+            """
+            SELECT sku_id AS "sku_id", location_id AS "location_id", occurred_at AS "occurred_at"
+            FROM (
+                SELECT sku_id, location_id, occurred_at,
+                       ROW_NUMBER() OVER (PARTITION BY sku_id ORDER BY occurred_at DESC) AS rn
+                FROM inventory.inventory_accuracy_signal
+                WHERE warehouse_id = {0} AND signal_type = 'PICKNOTFOUND'
+            ) s
+            WHERE rn <= {1}
+            """,
+            warehouseId,
+            limit)
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(r => new Application.Accuracy.SkuNotFoundOccurrence(r.SkuId, r.LocationId, r.OccurredAt))
             .ToList()
             .AsReadOnly();
     }
@@ -523,6 +1040,52 @@ public sealed class InventoryStore(InventoryDbContext db) : IInventoryStore
         public int Count180d { get; set; }
     }
 
+    private sealed class SkuLocationPhysicalActivityRow
+    {
+        public Guid SkuId { get; set; }
+
+        public Guid LocationId { get; set; }
+
+        public int Count30d { get; set; }
+
+        public int Count90d { get; set; }
+
+        public int Count180d { get; set; }
+
+        public DateTime? LastAt { get; set; }
+    }
+
+    private sealed class SkuLocationNotFoundStatsRow
+    {
+        public Guid SkuId { get; set; }
+
+        public Guid LocationId { get; set; }
+
+        public int Count7d { get; set; }
+
+        public int Count30d { get; set; }
+
+        public DateTime? LastAt { get; set; }
+    }
+
+    private sealed class SkuNotFoundOccurrenceRow
+    {
+        public Guid SkuId { get; set; }
+
+        public Guid LocationId { get; set; }
+
+        public DateTime OccurredAt { get; set; }
+    }
+
+    private sealed class SkuLocationLatestVerifiedCountRow
+    {
+        public Guid SkuId { get; set; }
+
+        public Guid LocationId { get; set; }
+
+        public DateTime CountedAt { get; set; }
+    }
+
     private sealed class NotFoundStatsRow
     {
         public Guid LocationId { get; set; }
@@ -566,6 +1129,20 @@ public sealed class InventoryStore(InventoryDbContext db) : IInventoryStore
                 && (t.Status == Domain.Accuracy.CycleCounting.CycleCountTaskStatus.Pending
                     || t.Status == Domain.Accuracy.CycleCounting.CycleCountTaskStatus.InProgress),
                 cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Domain.Accuracy.CycleCounting.CycleCountTask>> GetActiveCycleCountTasksAsync(
+        Guid warehouseId,
+        CancellationToken cancellationToken)
+    {
+        var result = await db.Set<Domain.Accuracy.CycleCounting.CycleCountTask>()
+            .AsNoTracking()
+            .Where(t =>
+                t.WarehouseId == warehouseId
+                && (t.Status == Domain.Accuracy.CycleCounting.CycleCountTaskStatus.Pending
+                    || t.Status == Domain.Accuracy.CycleCounting.CycleCountTaskStatus.InProgress))
+            .ToListAsync(cancellationToken);
+        return result.AsReadOnly();
     }
 
     public async Task<IReadOnlyList<Domain.Accuracy.CycleCounting.CycleCountTask>> ListCycleCountTasksAsync(
@@ -651,6 +1228,27 @@ public sealed class InventoryStore(InventoryDbContext db) : IInventoryStore
             skuId,
             locationId)
             .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Application.Accuracy.SkuLocationLatestVerifiedCount>> GetWarehouseLatestVerifiedCountsAsync(
+        Guid warehouseId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await db.Database.SqlQueryRaw<SkuLocationLatestVerifiedCountRow>(
+            """
+            SELECT t.sku_id AS "sku_id", t.location_id AS "location_id", MAX(r.counted_at) AS "counted_at"
+            FROM inventory.cycle_count_result r
+            INNER JOIN inventory.cycle_count_task t ON t.id = r.cycle_count_task_id
+            WHERE t.warehouse_id = {0} AND r.outcome = 'VERIFIED'
+            GROUP BY t.sku_id, t.location_id
+            """,
+            warehouseId)
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .Select(r => new Application.Accuracy.SkuLocationLatestVerifiedCount(r.SkuId, r.LocationId, r.CountedAt))
+            .ToList()
+            .AsReadOnly();
     }
 
     public async Task AddReconciliationAsync(Domain.Accuracy.Reconciliation.InventoryReconciliation reconciliation, CancellationToken cancellationToken)
@@ -741,7 +1339,7 @@ public sealed class InventoryStore(InventoryDbContext db) : IInventoryStore
             if (reconciliation.ReconciliationStatus != Domain.Accuracy.Reconciliation.ReconciliationStatus.Open)
             {
                 throw new InvalidReconciliationStateException(
-                    $"Yalnızca OPEN reconciliation approve edilebilir. Mevcut: {reconciliation.ReconciliationStatus}.");
+                    $"Yaln�zca OPEN reconciliation approve edilebilir. Mevcut: {reconciliation.ReconciliationStatus}.");
             }
 
             db.ChangeTracker.Clear();
@@ -773,7 +1371,7 @@ public sealed class InventoryStore(InventoryDbContext db) : IInventoryStore
             if (newQuantity < 0 || newQuantity < balance.Allocated)
             {
                 throw new AdjustmentConflictException(
-                    $"Adjustment allocated invariant'ını bozar: yeni miktar {newQuantity}, allocated {balance.Allocated}.");
+                    $"Adjustment allocated invariant'�n� bozar: yeni miktar {newQuantity}, allocated {balance.Allocated}.");
             }
 
             balance.ApplyAdjustment(quantityDelta);
@@ -861,6 +1459,7 @@ public sealed class InventoryStore(InventoryDbContext db) : IInventoryStore
         await _transaction.RollbackAsync(cancellationToken);
         await _transaction.DisposeAsync();
         _transaction = null;
+        db.ChangeTracker.Clear();
     }
 
     public async Task<StoreSaveOutcome> SaveChangesAsync(CancellationToken cancellationToken)

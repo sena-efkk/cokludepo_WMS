@@ -95,30 +95,58 @@ public sealed class ListRiskAssessments(
                 .Distinct()
                 .ToList();
 
+            if (pairs.Count == 0)
+            {
+                continue;
+            }
+
             var skuEventCounts = (await store.GetWarehouseSkuEventCountsAsync(warehouse.Id, cancellationToken))
                 .ToDictionary(c => c.SkuId, c => c.Count180d);
 
+            var activityBySku = (await store.GetWarehousePhysicalActivityAsync(warehouse.Id, cancellationToken))
+                .GroupBy(a => a.SkuId)
+                .ToDictionary(g => g.Key, g => g.ToDictionary(
+                    a => a.LocationId,
+                    a => new LocationPhysicalActivity(a.LocationId, a.Count30d, a.Count90d, a.Count180d, a.LastAt)));
+            var notFoundStatsBySku = (await store.GetWarehouseNotFoundStatsAsync(warehouse.Id, cancellationToken))
+                .GroupBy(n => n.SkuId)
+                .ToDictionary(g => g.Key, g => g.ToDictionary(
+                    n => n.LocationId,
+                    n => new LocationNotFoundStats(n.LocationId, n.Count7d, n.Count30d, n.LastAt)));
+            var occurrencesBySku = (await store.GetWarehouseNotFoundOccurrencesAsync(warehouse.Id, 200, cancellationToken))
+                .GroupBy(o => o.SkuId)
+                .ToDictionary(g => g.Key, g => g.Select(o => new NotFoundOccurrence(o.LocationId, o.OccurredAt)).ToList());
+            var verifiedBySkuLocation = (await store.GetWarehouseLatestVerifiedCountsAsync(warehouse.Id, cancellationToken))
+                .ToDictionary(v => (v.SkuId, v.LocationId), v => v.CountedAt);
+
+            var locationCache = new Dictionary<Guid, bool>();
+
             foreach (var (pairSkuId, pairLocationId) in pairs)
             {
-                var locationInfo = await facility.GetLocationAsync(pairLocationId, cancellationToken);
-                if (locationInfo is null || locationInfo.WarehouseId != warehouse.Id)
+                if (!locationCache.TryGetValue(pairLocationId, out var allowsPicking))
                 {
-                    continue;
+                    var locationInfo = await facility.GetLocationAsync(pairLocationId, cancellationToken);
+                    if (locationInfo is null || locationInfo.WarehouseId != warehouse.Id)
+                    {
+                        locationCache[pairLocationId] = false;
+                        continue;
+                    }
+
+                    allowsPicking = locationInfo.AllowsPicking;
+                    locationCache[pairLocationId] = allowsPicking;
                 }
 
-                var activityMap = (await store.GetPhysicalActivityAsync(warehouse.Id, pairSkuId, cancellationToken))
-                    .ToDictionary(a => a.LocationId);
-                var notFoundMap = (await store.GetNotFoundStatsAsync(warehouse.Id, pairSkuId, cancellationToken))
-                    .ToDictionary(n => n.LocationId);
-                var occurrences = await store.GetNotFoundOccurrencesAsync(warehouse.Id, pairSkuId, 200, cancellationToken);
-
-                var activity = activityMap.GetValueOrDefault(pairLocationId)
+                activityBySku.TryGetValue(pairSkuId, out var activityMap);
+                var activity = activityMap?.GetValueOrDefault(pairLocationId)
                     ?? new LocationPhysicalActivity(pairLocationId, 0, 0, 0, null);
-                var notFound = notFoundMap.GetValueOrDefault(pairLocationId)
+
+                notFoundStatsBySku.TryGetValue(pairSkuId, out var notFoundMap);
+                var notFound = notFoundMap?.GetValueOrDefault(pairLocationId)
                     ?? new LocationNotFoundStats(pairLocationId, 0, 0, null);
 
-                var verifiedAt = await store.GetLatestVerifiedCountAtAsync(warehouse.Id, pairSkuId, pairLocationId, cancellationToken);
-                var consecutiveNotFound = ConsecutiveCounter.Count(occurrences, pairLocationId, activity.LastAt, verifiedAt);
+                occurrencesBySku.TryGetValue(pairSkuId, out var occurrences);
+                var verifiedAt = verifiedBySkuLocation.GetValueOrDefault((pairSkuId, pairLocationId));
+                var consecutiveNotFound = ConsecutiveCounter.Count(occurrences ?? [], pairLocationId, activity.LastAt, verifiedAt);
 
                 var assessment = analyzer.Assess(
                     pairSkuId,
@@ -127,7 +155,7 @@ public sealed class ListRiskAssessments(
                     activity,
                     notFound,
                     consecutiveNotFound,
-                    locationInfo.AllowsPicking,
+                    allowsPicking,
                     analyzer.ClassifyVelocity(skuEventCounts, pairSkuId),
                     DateTime.UtcNow);
 
@@ -187,6 +215,10 @@ public sealed class GetAbcDeadSummary(
         var balances = await store.ListBalancesAsync(warehouseId, null, null, includeEmpty: true, cancellationToken);
         var skus = balances.Select(b => b.SkuId).Distinct().ToList();
 
+        var activityBySku = (await store.GetWarehousePhysicalActivityAsync(warehouseId, cancellationToken))
+            .GroupBy(a => a.SkuId)
+            .ToDictionary(g => g.Key, g => g.ToDictionary(a => a.LocationId, a => (DateTime?)a.LastAt));
+
         var classA = 0;
         var classB = 0;
         var classC = 0;
@@ -209,14 +241,14 @@ public sealed class GetAbcDeadSummary(
                     break;
             }
 
-            var activityMap = await store.GetPhysicalActivityAsync(warehouseId, skuId, cancellationToken);
+            activityBySku.TryGetValue(skuId, out var activityMap);
             var locations = balances.Where(b => b.SkuId == skuId).Select(b => b.LocationId).Distinct();
             foreach (var locationId in locations)
             {
-                var activity = activityMap.FirstOrDefault(a => a.LocationId == locationId);
-                int? days = activity?.LastAt is null
+                var lastAt = activityMap?.GetValueOrDefault(locationId);
+                int? days = lastAt is null
                     ? null
-                    : Math.Max(0, (int)(DateTime.UtcNow - activity!.LastAt!.Value).TotalDays);
+                    : Math.Max(0, (int)(DateTime.UtcNow - lastAt.Value).TotalDays);
 
                 switch (analyzer.ClassifyState(days))
                 {

@@ -2,6 +2,7 @@ using Wms.Modules.Inventory.Domain;
 using Wms.Modules.Inventory.Domain.Accuracy;
 using Wms.Modules.Inventory.Domain.Accuracy.CycleCounting;
 using Wms.Modules.Inventory.Domain.Accuracy.Reconciliation;
+using Wms.Integration.Telemetry;
 
 namespace Wms.Modules.Inventory.Application.Accuracy.CycleCounting;
 
@@ -19,11 +20,26 @@ public sealed class EvaluateCycleCountCandidates(
         var created = 0;
         var skipped = 0;
 
+        var activePairsByWarehouse = new Dictionary<Guid, HashSet<(Guid SkuId, Guid LocationId)>>();
+
         foreach (var assessment in assessments.OrderByDescending(a => a.RiskScore))
         {
             var repeated = assessment.ConsecutiveNotFound >= analyzer.Options.RepeatedNotFoundThreshold;
             if (!repeated && assessment.RiskLevel != RiskLevel.Red)
             {
+                continue;
+            }
+
+            if (!activePairsByWarehouse.TryGetValue(assessment.WarehouseId, out var activePairs))
+            {
+                var activeTasks = await store.GetActiveCycleCountTasksAsync(assessment.WarehouseId, cancellationToken);
+                activePairs = activeTasks.Select(t => (t.SkuId, t.LocationId)).ToHashSet();
+                activePairsByWarehouse[assessment.WarehouseId] = activePairs;
+            }
+
+            if (activePairs.Contains((assessment.SkuId, assessment.LocationId)))
+            {
+                skipped++;
                 continue;
             }
 
@@ -33,17 +49,6 @@ public sealed class EvaluateCycleCountCandidates(
                 : assessment.RiskLevel == RiskLevel.Red
                     ? CycleCountPriority.High
                     : CycleCountPriority.Medium;
-
-            var existingActive = await store.GetActiveCycleCountTaskAsync(
-                assessment.WarehouseId,
-                assessment.SkuId,
-                assessment.LocationId,
-                cancellationToken);
-            if (existingActive is not null)
-            {
-                skipped++;
-                continue;
-            }
 
             var evidence = string.Join("; ", assessment.Reasons.Select(r => $"{r.Code}: {r.Description}"));
             var task = CycleCountTask.Create(
@@ -67,6 +72,7 @@ public sealed class EvaluateCycleCountCandidates(
             }
         }
 
+        WmsMetrics.CycleCountsCreatedTotal.Add(created);
         return new EvaluateCycleCountsResult(created, skipped);
     }
 }

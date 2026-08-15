@@ -11,4 +11,5 @@ public enum LedgerEntryType
     StatusChangedFrom = 7,
     StatusChangedTo = 8,
     InventoryAdjustment = 9,
+    Received = 10,
 }

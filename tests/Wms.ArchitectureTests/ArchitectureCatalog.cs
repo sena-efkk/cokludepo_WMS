@@ -24,7 +24,7 @@ internal static class ArchitectureCatalog
             ["Wms.Modules.Inventory"] = ["Wms.Modules.MasterData", "Wms.Modules.Facility"],
             ["Wms.Modules.Inbound"] = ["Wms.Modules.MasterData", "Wms.Modules.Facility", "Wms.Modules.Inventory"],
             ["Wms.Modules.Outbound"] = ["Wms.Modules.MasterData", "Wms.Modules.Facility", "Wms.Modules.Inventory"],
-            ["Wms.Modules.Transfers"] = ["Wms.Modules.MasterData", "Wms.Modules.Outbound", "Wms.Modules.Inbound"],
+            ["Wms.Modules.Transfers"] = ["Wms.Modules.MasterData", "Wms.Modules.Facility", "Wms.Modules.Outbound", "Wms.Modules.Inbound"],
             ["Wms.Modules.Fulfillment"] = ["Wms.Modules.MasterData", "Wms.Modules.Facility", "Wms.Modules.Inventory", "Wms.Modules.Transfers", "Wms.Modules.Outbound"],
             ["Wms.Modules.Administration"] = ["Wms.Modules.Facility"],
         };

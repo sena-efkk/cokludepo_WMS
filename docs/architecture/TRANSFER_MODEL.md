@@ -172,3 +172,79 @@ Fiziksel transfer saatler/günler sürer; iki depoyu kapsayan bir DB transaction
 - Discrepancy resolution akışı (yukarıda) MVP'de implement edilmez; model engellemez.
 - Transfer iptali yalnızca ship öncesi; iade (return transfer) ayrı transfer olarak açılır.
 - Carrier entegrasyonu ile otomatik InTransit güncellemesi → Phase 13 (Event Integration).
+
+## Implementation Status (Phase 12)
+
+### Akış (uygulandı)
+
+```text
+BURSA Physical -10
+    │
+    ▼
+IN TRANSIT +10      (source Outbound ship → Inventory ConsumeReservation)
+    │
+    ├── receive 6   (destination Inbound receipt → Inventory Receive)
+    │
+    ▼
+InTransit 4
+    │
+    └── receive 4
+         ↓
+ISTANBUL Physical +10
+Final InTransit = 0   → Transfer COMPLETED
+```
+
+> **A transfer changes stock location in the network; it must not silently create or
+> destroy network physical stock.**
+
+### Model (uygulandı)
+
+- `TransferOrder` (UNIQUE request_id + transfer_number; CHECK source ≠ destination) +
+  `TransferLine` + append-only `TransferDiscrepancy` + `TransferReceiveRecord` —
+  `transfers` şeması, migration InitialTransfers uygulandı.
+- **InTransit DERIVED** (writable kolon YOK): `InTransit = Shipped − Received − ConfirmedVariance`.
+  DB CHECK `received + confirmed_variance <= shipped` → negatif InTransit imkânsız (DB seviyesi).
+- Status makinesi: `CREATED → ALLOCATED → IN_TRANSIT → RECEIVING → COMPLETED` (+ CANCELLED
+  yalnız ship öncesi; EXCEPTION rezerve). Arbitrary setter yok; terminal state'te InTransit=0
+  garanti (MarkCompletedIfAllClosed domain guard'ı — testli).
+
+### Source / Destination (contract'lar, doğrudan yazım YOK)
+
+- **Source**: Transfers `IOutboundContract` ile bir Outbound fulfillment order yaratır
+  (deterministik RequestId — aynı transfer hep aynı order'ı üretir) → AllocateOrder
+  (Inventory ReserveOrder) → operatör pick/pack (outbound path) → ShipOrder
+  (ConsumeReservation → source physical azalır + ledger) → transfer IN_TRANSIT.
+- **Destination**: Transfers `IInboundContract` ile destination receipt yaratır (ship anında,
+  idempotent) → `ReceiveAsync` (Inbound path → Inventory +q + RECEIVED ledger) → transfer
+  line ReceivedQuantity artar. Partial receive destekli.
+- Yeni contract'lar: `Outbound.Contracts.IOutboundContract`, `Inbound.Contracts.IInboundContract`,
+  `Transfers.Contracts.ITransferContract` (network view InTransit okuması).
+
+### Discrepancy (audit iziyle)
+
+- `ConfirmVariance(line, qty, reason∈{SHORT, DAMAGED_IN_TRANSIT, LOST, OVER, OTHER})` →
+  append-only kayıt (UNIQUE request_id) + line.ConfirmedVariance += qty. Tüm line'lar
+  kapandığında transfer COMPLETED. **Over receipt reddedilir** (409) — sessiz kabul yok.
+
+### Recovery & Idempotency (distributed transaction YOK)
+
+- Ship crash: Outbound ship sonrası crash → retry aynı türetilmiş RequestId → AlreadyShipped →
+  transfer IN_TRANSIT tamamlanır; source stock TEK kez tüketilir (testli).
+- Receive crash: Inbound receive sonrası crash → retry aynı RequestId → AlreadyRecorded →
+  transfer line TEK kez artar; destination stock TEK kez artar (testli).
+- Concurrent duplicate receive (gerçek PG): tek record + tek stok artışı (testli).
+
+### Network View (Phase 11 güncellendi)
+
+`NetworkPhysicalStock = Σ warehouse physical + Σ open InTransit`; `NetworkATP = Σ warehouse ATP`
+(InTransit ATP'ye GİRMEZ). Transfer boyunca network physical sabit (testli: 30 → 30 → 30).
+
+### Kabul (23 test + canlı)
+
+Same/destination guard, invalid warehouse/SKU, allocation Inventory üzerinden, ship source
+azaltır, InTransit doğru, network physical sabit, ATP in-transit hariç, partial receive,
+destination inbound path (RECEIVED ledger), duplicate ship/receive, iki crash senaryosu,
+short/damaged/lost discrepancy, over receipt ret, terminal InTransit=0, ship sonrası cancel ret,
+pre-ship cancel reservation release, cross-module FK yok, concurrency — tamamı gerçek PostgreSQL.
+Canlı API: create → allocate → pick/pack → ship (InTransit 10, physical 65 sabit, ATP 55) →
+receive 6+4 → COMPLETED (physical 65, ATP 65).

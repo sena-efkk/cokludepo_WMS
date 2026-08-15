@@ -20,4 +20,38 @@ public sealed class MasterDataQueryContract(MasterDataDbContext db) : IMasterDat
             .Select(s => new SkuInfo(s.Id, s.Code, s.IsActive))
             .FirstOrDefaultAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyList<SkuInfo>> GetSkusByIdsAsync(IReadOnlyList<Guid> skuIds, CancellationToken cancellationToken)
+    {
+        if (skuIds.Count == 0)
+        {
+            return [];
+        }
+
+        var result = await db.Skus
+            .Where(s => skuIds.Contains(s.Id))
+            .Select(s => new SkuInfo(s.Id, s.Code, s.IsActive))
+            .ToListAsync(cancellationToken);
+        return result.AsReadOnly();
+    }
+
+    public async Task<IReadOnlyList<Guid>> SearchSkuIdsAsync(string query, int limit, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return [];
+        }
+
+        var term = query.Trim();
+        var result = await db.Skus
+            .Where(s => s.Code.ToLower().Contains(term.ToLower())
+                        || s.Barcodes.Any(b => b.Value.Contains(term))
+                        || (s.Name != null && s.Name.ToLower().Contains(term.ToLower()))
+                        || (s.Product != null && s.Product.Name.ToLower().Contains(term.ToLower())))
+            .OrderBy(s => s.Code)
+            .Take(limit)
+            .Select(s => s.Id)
+            .ToListAsync(cancellationToken);
+        return result.AsReadOnly();
+    }
 }

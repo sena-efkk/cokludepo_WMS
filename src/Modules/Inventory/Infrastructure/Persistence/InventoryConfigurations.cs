@@ -110,11 +110,14 @@ public sealed class InventoryLedgerEntryConfiguration : IEntityTypeConfiguration
         builder.Property(e => e.QuantityDelta).IsRequired();
         builder.Property(e => e.AllocatedDelta).IsRequired();
         builder.Property(e => e.OccurredAt).HasColumnType("timestamptz").IsRequired();
+        builder.Property(e => e.ReferenceType).HasMaxLength(64);
+        builder.Property(e => e.ReferenceId);
 
         builder.HasIndex(e => new { e.WarehouseId, e.SkuId });
         builder.HasIndex(e => e.WarehouseId);
         builder.HasIndex(e => e.RequestId);
         builder.HasIndex(e => e.MovementId);
+        builder.HasIndex(e => new { e.ReferenceType, e.ReferenceId });
     }
 }
 

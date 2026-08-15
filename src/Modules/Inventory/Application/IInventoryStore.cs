@@ -58,6 +58,50 @@ public interface IInventoryStore
 
     Task<ScanMovementEvidence?> GetScanEvidenceByMovementIdAsync(Guid movementId, CancellationToken cancellationToken);
 
+    Task<StoreSaveOutcome> ExecuteReceiveAsync(
+        Guid requestId,
+        Guid skuId,
+        Guid warehouseId,
+        Guid locationId,
+        InventoryStatus status,
+        int quantity,
+        string? referenceType,
+        Guid? referenceId,
+        CancellationToken cancellationToken);
+
+    Task<SkuWarehouseAvailabilityView?> GetSkuWarehouseAvailabilityRowAsync(
+        Guid warehouseId,
+        Guid skuId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<SkuWarehouseAvailabilityView>> ListSkuWarehouseAvailabilityRowsAsync(
+        Guid skuId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<SkuLocationBalanceView>> ListSkuLocationBalanceRowsAsync(
+        Guid warehouseId,
+        Guid skuId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<WarehouseStockRollupView>> ListWarehouseStockRollupRowsAsync(
+        CancellationToken cancellationToken);
+
+    Task<(IReadOnlyList<WarehouseSkuStockRowView> Rows, int Total)> ListWarehouseSkuRowsAsync(
+        Guid warehouseId,
+        int skip,
+        int take,
+        CancellationToken cancellationToken);
+
+    Task<(IReadOnlyList<SkuWarehouseAvailabilityView> Rows, int Total)> ListSkuWarehousePageRowsAsync(
+        Guid? warehouseId,
+        IReadOnlyList<Guid>? skuIds,
+        bool? hasStock,
+        bool? hasAtp,
+        string? sort,
+        int skip,
+        int take,
+        CancellationToken cancellationToken);
+
     Task AddAccuracySignalAsync(InventoryAccuracySignal signal, CancellationToken cancellationToken);
 
     Task<InventoryAccuracySignal?> GetAccuracySignalByRequestIdAsync(Guid requestId, CancellationToken cancellationToken);
@@ -77,6 +121,10 @@ public interface IInventoryStore
         Guid skuId,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<Accuracy.SkuLocationPhysicalActivity>> GetWarehousePhysicalActivityAsync(
+        Guid warehouseId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<Accuracy.SkuEventCount>> GetWarehouseSkuEventCountsAsync(
         Guid warehouseId,
         CancellationToken cancellationToken);
@@ -86,9 +134,18 @@ public interface IInventoryStore
         Guid skuId,
         CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<Accuracy.SkuLocationNotFoundStats>> GetWarehouseNotFoundStatsAsync(
+        Guid warehouseId,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyList<Accuracy.NotFoundOccurrence>> GetNotFoundOccurrencesAsync(
         Guid warehouseId,
         Guid skuId,
+        int limit,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<Accuracy.SkuNotFoundOccurrence>> GetWarehouseNotFoundOccurrencesAsync(
+        Guid warehouseId,
         int limit,
         CancellationToken cancellationToken);
 
@@ -100,6 +157,10 @@ public interface IInventoryStore
         Guid warehouseId,
         Guid skuId,
         Guid locationId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<Domain.Accuracy.CycleCounting.CycleCountTask>> GetActiveCycleCountTasksAsync(
+        Guid warehouseId,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<Domain.Accuracy.CycleCounting.CycleCountTask>> ListCycleCountTasksAsync(
@@ -122,6 +183,10 @@ public interface IInventoryStore
         Guid warehouseId,
         Guid skuId,
         Guid locationId,
+        CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<Accuracy.SkuLocationLatestVerifiedCount>> GetWarehouseLatestVerifiedCountsAsync(
+        Guid warehouseId,
         CancellationToken cancellationToken);
 
     Task AddReconciliationAsync(Domain.Accuracy.Reconciliation.InventoryReconciliation reconciliation, CancellationToken cancellationToken);

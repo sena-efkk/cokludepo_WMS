@@ -5,4 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- GHSA-g94r-2vxg-569j: OpenTelemetry.Api advisory — patched sürüm henüz yok;
+         local dev stack, external attack surface yok. Bkz. docs/architecture/OBSERVABILITY.md. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-g94r-2vxg-569j" />
+  </ItemGroup>
 </Project>

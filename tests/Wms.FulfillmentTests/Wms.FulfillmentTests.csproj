@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Wms.FulfillmentTests</RootNamespace>
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Fulfillment\Wms.Modules.Fulfillment.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Inventory\Wms.Modules.Inventory.csproj" />
+    <ProjectReference Include="..\..\src\Modules\MasterData\Wms.Modules.MasterData.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Facility\Wms.Modules.Facility.csproj" />
+  </ItemGroup>
+</Project>

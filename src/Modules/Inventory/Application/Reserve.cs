@@ -66,6 +66,11 @@ public sealed class Reserve(
                     break;
                 }
 
+                if (balance.Available <= 0)
+                {
+                    continue;
+                }
+
                 var take = Math.Min(remaining, balance.Available);
                 balance.AddAllocated(take);
                 reservation.AddLine(balance.LocationId, take);
